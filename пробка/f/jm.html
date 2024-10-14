@@ -1,0 +1,174 @@
+<!DOCTYPE html>  
+<html lang="ru">  
+<head>  
+    <meta charset="UTF-8">  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+    <title>Чтение текстовых файлов и проверка HTML и CSS</title>  
+    <style>  
+        body {  
+            font-family: Arial, sans-serif;  
+            margin: 20px;  
+        }  
+        pre {  
+            background: #f4f4f4;  
+            padding: 10px;  
+            border-radius: 5px;  
+            white-space: pre-wrap;  
+        }  
+        .error {  
+            color: red;  
+        }  
+        .success {  
+            color: green;  
+        }  
+        button {  
+            margin-top: 20px;  
+        }  
+    </style>  
+</head>  
+<body>  
+    <h1>Содержимое текстовых файлов с проверкой HTML и CSS</h1>  
+    <input type="file" id="fileInput" multiple accept=".html, .css" />  
+    <div id="file-contents"></div>  
+    <button id="gotoPageButton">Перейти на страницу</button>  
+
+    <script>  
+        document.getElementById('fileInput').addEventListener('change', handleFileSelect, false);  
+
+        function handleFileSelect(event) {  
+            const files = event.target.files;  
+            const fileContentsDiv = document.getElementById('file-contents');  
+            fileContentsDiv.innerHTML = '';  
+
+            for (const file of files) {  
+                const reader = new FileReader();  
+
+                reader.onload = function (e) {  
+                    const content = e.target.result;  
+                    const lines = content.split('\n'); // Разбиваем текст на строки  
+                    const pre = document.createElement('pre');  
+                    pre.textContent = `Содержимое файла ${file.name}:\n\n${content}`;  
+                    fileContentsDiv.appendChild(pre);  
+
+                    // Проверка на основе расширения файла  
+                    const fileExtension = file.name.split('.').pop().toLowerCase();  
+                    if (fileExtension === 'html') {  
+                        checkHTML(lines, file.name, fileContentsDiv);  
+                    } else if (fileExtension === 'css') {  
+                        checkCSS(lines, file.name, fileContentsDiv);  
+                    }  
+                };  
+
+                reader.readAsText(file);  
+            }  
+        }  
+
+        function checkHTML(lines, fileName, fileContentsDiv) {  
+            let errors = [];  
+            const tagStack = [];  
+            const tagRegex = /<\/?([a-z1-6][a-z1-60-9]*)\b[^>]*>/gi;  
+
+            for (let i = 0; i < lines.length; i++) {  
+                const line = lines[i];  
+                let match;  
+
+                while ((match = tagRegex.exec(line)) !== null) {  
+                    const tagName = match[1].toLowerCase();  
+                    const lineNumber = i + 1;  
+
+                    // Игнорировать теги <meta>, <body>, <html>, <head>  
+                    if (['meta', 'body', 'html', 'head'].includes(tagName)) {  
+                        continue;  
+                    }  
+
+                    if (match[0].startsWith('</')) {  
+                        if (tagStack.length > 0 && tagStack[tagStack.length - 1] === tagName) {  
+                            tagStack.pop();  
+                        } else {  
+                            errors.push(`Ошибка: неверно закрывающий тег </${tagName}> на строке ${lineNumber}.`);  
+                        }  
+                    } else {  
+                        const selfClosingTags = ['area', 'base', 'br', 'col', 'command', 'embed', 'hr', 'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr'];  
+                        if (selfClosingTags.includes(tagName)) {  
+                            if (!match[0].endsWith('/>')) {  
+                                errors.push(`Ошибка: некорректный самозакрывающий тег <${tagName}> на строке ${lineNumber}.`);  
+                            }  
+                        }  
+                        tagStack.push(tagName);  
+
+                        switch (tagName) {  
+                            case 'img':  
+                                if (!/src=["'].*?["']/.test(line.substring(match.index))) {  
+                                    errors.push(`Ошибка: тег <img> должен содержать атрибут src на строке ${lineNumber}.`);  
+                                }  
+                                break;  
+                            case 'a':  
+                                if (!/href=["'].*?["']/.test(line.substring(match.index))) {  
+                                    errors.push(`Ошибка: тег <a> должен содержать атрибут href на строке ${lineNumber}.`);  
+                                }  
+                                break;  
+                        }  
+                    }  
+                }  
+            }  
+
+            // Если остались незакрытые теги  
+            if (tagStack.length > 0) {  
+                errors.push(`Ошибка: некоторые теги не закрыты: <${tagStack.join('>, <')}>.`);  
+            }  
+
+            displayErrors(errors, fileName, fileContentsDiv);  
+        }  
+
+        function checkCSS(lines, fileName, fileContentsDiv) {  
+            let errors = [];  
+
+            for (let i = 0; i < lines.length; i++) {  
+                const line = lines[i].trim();  
+                const lineNumber = i + 1;  
+
+                // Проверка отсутствия точки с запятой перед новой строкой  
+                if (line && !line.endsWith(';') && !line.endsWith('{') && !line.endsWith('}')) {  
+                    errors.push(`Ошибка: отсутствует точка с запятой в строке ${lineNumber}.`);  
+                }  
+
+                // Проверка на некорректные селекторы  
+                if (/(\s+|\,)+\w+\s*\{/.test(line)) {  
+                    errors.push(`Ошибка: некорректный селектор в строке ${lineNumber}.`);  
+                }  
+
+                // Проверьте на пустые правила  
+                if (line.startsWith('}')) {  
+                    errors.push(`Ошибка: пустое правило в строке ${lineNumber}.`);  
+                }  
+            }  
+
+            displayErrors(errors, fileName, fileContentsDiv);  
+        }  
+
+        function displayErrors(errors, fileName, fileContentsDiv) {  
+            if (errors.length > 0) {  
+                const errorDiv = document.createElement('div');  
+                errorDiv.className = 'error';  
+                errorDiv.innerHTML = `<strong>Ошибки в файле ${fileName}:</strong><br>`;  
+                errors.forEach((error) => {  
+                    const errorMsg = document.createElement('div');  
+                    errorMsg.textContent = error;  
+                    errorDiv.appendChild(errorMsg);  
+                });  
+                fileContentsDiv.appendChild(errorDiv);  
+            } else {  
+                const successDiv = document.createElement('div');  
+                successDiv.className = 'success';  
+                successDiv.textContent = `Ошибок не найдено в файле ${fileName}.`;  
+                fileContentsDiv.appendChild(successDiv);  
+            }  
+        }  
+
+        // Добавляем обработчик нажатия кнопки  
+        document.getElementById('gotoPageButton').addEventListener('click', function() {  
+            window.location.href = 'https://example.com';  // Замените на нужный URL  
+        });  
+    </script>  
+</body>  
+</html>
